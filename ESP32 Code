@@ -1,0 +1,108 @@
+#include <ESP32Servo.h>
+
+Servo panServo;
+Servo tiltServo;
+
+// Pins
+const int PAN_SERVO_PIN  = 18;
+const int TILT_SERVO_PIN = 19;
+const int RELAY_PIN      = 4;
+
+// Sleep detection timing
+unsigned long drowsyStartTime = 0;
+bool drowsyTimerRunning = false;
+
+void setup()
+{
+    Serial.begin(115200);
+
+    panServo.attach(PAN_SERVO_PIN);
+    tiltServo.attach(TILT_SERVO_PIN);
+
+    pinMode(RELAY_PIN, OUTPUT);
+    digitalWrite(RELAY_PIN, LOW);
+
+    panServo.write(90);
+    tiltServo.write(90);
+
+    Serial.println("ESP32 Face Tracker Ready");
+}
+
+void loop()
+{
+    if (Serial.available())
+    {
+        String data = Serial.readStringUntil('\n');
+
+        data.trim();
+
+        int firstComma  = data.indexOf(',');
+        int secondComma = data.indexOf(',', firstComma + 1);
+
+        if (firstComma > 0 && secondComma > 0)
+        {
+            int panAngle = data.substring(
+                0,
+                firstComma
+            ).toInt();
+
+            int tiltAngle = data.substring(
+                firstComma + 1,
+                secondComma
+            ).toInt();
+
+            int sleepFlag = data.substring(
+                secondComma + 1
+            ).toInt();
+
+            // Safety limits
+            panAngle = constrain(panAngle, 0, 180);
+            tiltAngle = constrain(tiltAngle, 0, 180);
+
+            // Move servos
+            panServo.write(panAngle);
+            tiltServo.write(tiltAngle);
+
+            // Debug output
+            Serial.print("PAN: ");
+            Serial.print(panAngle);
+
+            Serial.print("  TILT: ");
+            Serial.print(tiltAngle);
+
+            Serial.print("  SLEEP: ");
+            Serial.println(sleepFlag);
+
+            // -------------------------
+            // DROWSINESS LOGIC
+            // -------------------------
+            if (sleepFlag == 1)
+            {
+                if (!drowsyTimerRunning)
+                {
+                    drowsyTimerRunning = true;
+                    drowsyStartTime = millis();
+                }
+
+                // 5 seconds continuously drowsy
+                if (millis() - drowsyStartTime > 2000)
+                {
+                    Serial.println("WAKE UP!");
+
+                    digitalWrite(RELAY_PIN, HIGH);
+
+                    delay(500);
+
+                    digitalWrite(RELAY_PIN, LOW);
+
+                    drowsyStartTime = millis();
+                }
+            }
+            else
+            {
+                drowsyTimerRunning = false;
+                digitalWrite(RELAY_PIN, LOW);
+            }
+        }
+    }
+}
